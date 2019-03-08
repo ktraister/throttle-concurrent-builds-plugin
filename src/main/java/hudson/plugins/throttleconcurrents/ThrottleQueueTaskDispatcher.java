@@ -147,6 +147,34 @@ public class ThrottleQueueTaskDispatcher extends QueueTaskDispatcher {
                                 return CauseOfBlockage.fromMessage(Messages._ThrottleQueueTaskDispatcher_MaxCapacityOnNode(runCount));
                             }
                         }
+			// KT
+			//adding this to try to run only a single build
+			else if (maxConcurrentPerNode == 0) {
+                            for (Task catTask : categoryTasks) {
+                                if (jenkins.getQueue().isPending(catTask)) {
+                                    return CauseOfBlockage.fromMessage(Messages._ThrottleQueueTaskDispatcher_BuildPending());
+                                }
+                                runCount += buildsOfProjectOnNode(node, catTask);
+                            }
+                            Map<String,List<FlowNode>> throttledPipelines = ThrottleJobProperty.getThrottledPipelineRunsForCategory(catNm);
+                            for (Map.Entry<String,List<FlowNode>> entry : throttledPipelines.entrySet()) {
+                                if (hasPendingPipelineForCategory(entry.getValue())) {
+                                    return CauseOfBlockage.fromMessage(Messages._ThrottleQueueTaskDispatcher_BuildPending());
+                                }
+                                Run<?,?> r = Run.fromExternalizableId(entry.getKey());
+                                if (r != null) {
+                                    List<FlowNode> flowNodes = entry.getValue();
+                                    if (r.isBuilding()) {
+                                        runCount += pipelinesOnNode(node, r, flowNodes);
+                                    }
+                                }
+                            }
+                            // This would mean that there are as many or more builds currently running than are allowed.
+                            if (runCount >= maxConcurrentPerNode) {
+                                return CauseOfBlockage.fromMessage(Messages._ThrottleQueueTaskDispatcher_MaxCapacityOnNode(runCount));
+                            }
+                        }
+			//END SINGLE BUILD STUFF
                     }
                 }
             }
